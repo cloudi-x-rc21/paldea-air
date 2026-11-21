@@ -139,7 +139,7 @@ header nav a:hover{background:#e8f3fa}
 .purchase-btn{background:linear-gradient(110deg,#0c477b,#087f8c);padding:15px 24px;box-shadow:0 6px 18px #08477933}
 .payment-overlay[hidden],.payment-state-icon[hidden]{display:none}
 .payment-overlay{position:fixed;inset:0;z-index:9999;background:#061e3bd9;display:flex;justify-content:center;align-items:center;padding:18px;backdrop-filter:blur(7px)}
-.payment-modal{background:white;border-radius:24px;width:min(100%,540px);padding:44px 38px 34px;text-align:center;box-shadow:0 28px 90px #001b3a66}
+.payment-modal{background:white;border-radius:24px;width:min(100%,540px);max-height:calc(100dvh - 36px);overflow-y:auto;overscroll-behavior:contain;padding:44px 38px 34px;text-align:center;box-shadow:0 28px 90px #001b3a66}
 .payment-modal .eyebrow{margin:13px 0 8px}.payment-modal h2{font-size:30px;letter-spacing:-.03em}.payment-modal p{font-size:14px}
 .payment-orbit{width:134px;height:134px;margin:0 auto 24px;position:relative;display:grid;place-items:center}
 .orbit-ring{position:absolute;inset:12px;border:3px dashed #b8dbe4;border-radius:50%;animation:orbitPulse 2s linear infinite}
@@ -312,7 +312,7 @@ main>section.active-page{animation:paPageEnter .42s var(--motion-ease) both}
 <label>From<select id="origin" required></select></label><label>To<select id="destination" required></select></label>
 <label>Journey<select id="tripType"><option value="round">Return</option><option value="oneway">One-way</option></select></label>
 <label>Departure date<input id="departDate" type="date" required></label><label id="returnDateWrap">Return date<input id="returnDate" type="date"></label>
-<label>Passengers<select id="passengers"><option value="1">1 passenger</option><option value="2">2 passengers</option><option value="3">3 passengers</option><option value="4">4 passengers</option><option value="5">5 passengers</option><option value="6">6 passengers</option></select></label>
+<label>Passengers (1–250)<input id="passengers" type="number" min="1" max="250" step="1" value="1" required inputmode="numeric" aria-describedby="passengerHelp"><span id="passengerHelp" class="notice">Up to 250 guests per booking, subject to each flight’s cabin capacity and live seat availability.</span></label>
 <label>Cabin<select id="bookingCabin"><option>Economy</option><option>Premium Economy</option><option>Business</option><option>Private Suite</option></select></label>
 <label>Special meal<select id="specialMeal"><option>Standard meal</option><option>Halal meal</option><option>Vegan meal</option><option>Vegetarian meal</option><option>Seafood-free meal</option><option>Gluten-free meal</option><option>Dairy-free meal</option><option>Nut-free request</option><option>Children's meal</option></select></label>
 <label>Book the Cook · US$100 (₽10,000) per passenger per flight · 25% off return experience on two-way bookings<select id="bookCook"><option value="none">Not requested</option><option value="ribeye">Prime Ribeye · Chef's signature</option><option value="lamb">Rosemary Lamb · Chef's table</option><option value="mushroom">Wild Mushroom Risotto · Chef's table</option><option value="chicken">Citrus-Herb Chicken · Chef's table</option></select></label></div>
@@ -320,7 +320,7 @@ main>section.active-page{animation:paPageEnter .42s var(--motion-ease) both}
 <div id="returnBlock"><div class="flight-head"><h3>2 · Select return flight</h3><span>Available return services</span></div><div id="returnFlights" class="flight-options"></div></div>
 <div class="flight-head"><h3>3 · Choose your seats</h3><span>Optional paid seat selection · Extra legroom +₽700 · Forward zone +₽400</span></div>
 <div id="bookingSeatChooser" class="panel" style="padding:16px"></div>
-<div class="booking-actions"><button class="primary" type="submit">Review itinerary</button><span class="notice">Fare shown in Pokédollars (₽) · ₽100 = US$1</span></div><div id="bookingResult" class="result" hidden role="status" aria-live="polite"></div>
+<div class="booking-actions"><button class="primary" type="submit">Review itinerary</button><span class="notice">Fare shown in Pokédollars (₽) · ₽100 = US$1 · 1–250 passengers per booking, subject to aircraft capacity</span></div><div id="bookingResult" class="result" hidden role="status" aria-live="polite"></div>
 </form></div><p class="notice" style="margin-top:12px">This is a demonstration booking experience. Even in cloud mode, purchase, payment confirmation, ticket IDs and check-in are simulated; no money is charged and no tickets are valid for travel. Dietary meals require advance arrangement; allergen-free preparation cannot be guaranteed.</p>
 </section>
 <section id="dining" class="section"><div class="eyebrow">The Paldea Air experience</div><h2>Inflight dining menus</h2><p class="menu-intro">A Paldea-inspired dining collection celebrating Mediterranean flavours, regional produce and thoughtful onboard hospitality. Economy meals are included with eligible Economy services. Special dietary menus offer at least three choices per request category; selection depends on catering availability and advance notice. Allergen cross-contact cannot be guaranteed.</p>
@@ -2080,6 +2080,11 @@ function seatInventory(f,cabin){
  return seats;
 }
 function seatCapacity(seat){return seat.id==="095S"?4:seat.id.endsWith("S")?2:1;}
+const MAX_BOOKING_PASSENGERS=250;
+function passengerCount(){return Number($("passengers").value);}
+function validPassengerCount(pax){return Number.isInteger(pax)&&pax>=1&&pax<=MAX_BOOKING_PASSENGERS;}
+function cabinCapacity(flight,cabin){return seatInventory(flight,cabin).reduce((total,seat)=>total+seatCapacity(seat),0);}
+function flightFitsParty(flight,cabin,pax){return supportsCabin(flight,cabin)&&cabinCapacity(flight,cabin)>=pax;}
 function displaySeatId(id,cabin){
  const raw=String(id??'');
  return cabin==='Private Suite'?raw.replace(/^0+(?=\d)/,''):raw;
@@ -2144,7 +2149,7 @@ async function refreshSeatAvailability(force=false){
 }
 // ===== END SHARED SEAT INVENTORY =====
 function renderSeatChooser(){
- const cabin=$("bookingCabin").value,from=$("origin").value,to=$("destination").value,pax=Number($("passengers").value);
+ const cabin=$("bookingCabin").value,from=$("origin").value,to=$("destination").value,pax=passengerCount();
  const round=$("tripType").value==="round";
  const legs=[{key:"outbound",flight:routeServices(from,to,dateInput.value).find(f=>f.flightNo===selectedOut)}];
  if(round)legs.push({key:"inbound",flight:routeServices(to,from,returnInput.value).find(f=>f.flightNo===selectedReturn)});
@@ -2161,15 +2166,15 @@ function renderSeatChooser(){
   const seatStatus=!cloud?'Local demonstration mode · Shared seat inventory requires cloud mode.'
    :loading?'Checking live seat availability…'
    :live.error?'Seat map unavailable: '+live.error+' · Wait or change flights to retry.'
-   :`${live.available} of ${live.total} seats / suites available · ${live.total-live.available} reserved · Synced ${new Date(live.updated).toLocaleTimeString()}`;
+   :`${live.availableCapacity} of ${cabinCapacity(flight,cabin)} passenger places available · ${live.available} seats / suites free · Synced ${new Date(live.updated).toLocaleTimeString()}`;
   const fee=seatChoices[key].reduce((sum,id)=>sum+seatFee(flight,cabin,inventory.find(s=>s.id===id)),0);
-  return `<div class="seat-leg"><strong>${key==="outbound"?"Outbound":"Return"} · ${flight.flightNo} · ${fleetById[flight.aircraft].name}</strong><div class="seat-cloud-indicator" role="status">${esc(seatStatus)}</div><div class="seat-charge">${cabin==="Private Suite"?`Choose accommodation for ${pax} passenger${pax===1?"":"s"}: B rooms accommodate 1, S suites accommodate 2, and Grand Suite 95S accommodates 4 (equivalent to two S suites). Grand Suite 95S costs ₽21,600, 1.8× the B-room fee of ₽12,000.`:`Choose up to ${pax} individual seat${pax===1?"":"s"}.`} Selected: ${displaySeatList(seatChoices[key],cabin)||"None"} · Selection fees ${money(fee)}</div><div class="seat-picker-grid">${inventory.map((seat,i)=>{
+  return `<div class="seat-leg"><strong>${key==="outbound"?"Outbound":"Return"} · ${flight.flightNo} · ${fleetById[flight.aircraft].name}</strong><div class="seat-cloud-indicator" role="status">${esc(seatStatus)}</div><div class="seat-charge">${cabin==="Private Suite"?`Choose accommodation for ${pax} passenger${pax===1?"":"s"}: B rooms accommodate 1, S suites accommodate 2, and Grand Suite 95S accommodates 4 (equivalent to two S suites). Grand Suite 95S costs ₽21,600, 1.8× the B-room fee of ₽12,000.`:`Choose up to ${pax} individual seat${pax===1?"":"s"}.`} Selected: ${seatChoices[key].length} seat${seatChoices[key].length===1?"":"s"} / suite${seatChoices[key].length===1?"":"s"}${seatChoices[key].length<=12?": "+displaySeatList(seatChoices[key],cabin):""} · Selection fees ${money(fee)}</div><div class="seat-picker-grid">${inventory.map((seat,i)=>{
    const occupied=!!live?.occupied?.has(seat.id);
    const disabled=occupied||unavailable;
    return `<button type="button" class="pick-seat ${seatChoices[key].includes(seat.id)?"selected":""} ${occupied?"occupied":""} ${unavailable?"seat-pending":""} ${seat.extra?"extra-legroom":seat.forward?"forward-zone":""}" data-leg="${key}" data-seat="${seat.id}" ${disabled?"disabled":""} title="${occupied?"Already booked · ":unavailable?"Waiting for live inventory · ":""}${seat.id==="095S"?"Four-person Grand Suite (4 guests, counts as 2 S suites) · " : seat.id.endsWith("S")?"Two-person suite · ":""}${displaySeatId(seat.id,cabin)} · ${seat.extra?"Extra legroom +₽700 · ":seat.forward?"Forward zone +₽400 · ":"Standard seat · "}Fee ₽${seatFee(flight,cabin,seat).toLocaleString()}">${displaySeatId(seat.id,cabin)}</button>`;
   }).join("")}</div></div>`;
  }).join("");
- $("bookingSeatChooser").innerHTML=html+`<div class="seat-sync-actions"><button type="button" id="refreshLiveSeats" class="seat-refresh-btn" ${cloudEnabled()?'':'disabled'}>↻ Refresh live seats</button><span class="notice">Seat reservations are shared across devices and verified at checkout.</span></div>`+'<p class="notice">Seat selection is optional. Standard seats and B rooms accommodate one passenger each; S suites accommodate two, and Grand Suite 95S accommodates four (two suite units). Suite selection is charged per room or suite, not per occupant. Extra-legroom seats cost an additional ₽700; forward-zone seats cost an additional ₽400. Grey seats are reserved for that flight and date. Seat availability refreshes automatically and is checked again at purchase. Automatic assignments also reserve real seats. Fees are added to the fare at itinerary review.</p>';
+ $("bookingSeatChooser").innerHTML=html+`<div class="seat-sync-actions"><button type="button" id="refreshLiveSeats" class="seat-refresh-btn" ${cloudEnabled()?'':'disabled'}>↻ Refresh live seats</button><span class="notice">Seat reservations are shared across devices and verified at checkout.</span></div>`+'<p class="notice">Seat selection is optional. For large groups, leave all seats unselected to let the system automatically allocate enough available seats. Standard seats and B rooms accommodate one passenger each; S suites accommodate two, and Grand Suite 95S accommodates four (two suite units). Suite selection is charged per room or suite, not per occupant. Extra-legroom seats cost an additional ₽700; forward-zone seats cost an additional ₽400. Grey seats are reserved for that flight and date. Seat availability refreshes automatically and is checked again at purchase. Automatic assignments also reserve real seats. Fees are added to the fare at itinerary review.</p>';
  $("refreshLiveSeats")?.addEventListener("click",()=>{void refreshSeatAvailability(true);});
  $("bookingSeatChooser").querySelectorAll("button[data-seat]").forEach(b=>b.addEventListener("click",()=>{
   const key=b.dataset.leg,id=b.dataset.seat,chosen=seatChoices[key];
@@ -2179,18 +2184,18 @@ function renderSeatChooser(){
  }));
 }
 
-function flightCard(f,selected,cabin,kind){const ok=supportsCabin(f,cabin);return `<label class="flight-card ${selected===f.flightNo?"chosen":""} ${ok?"":"unavailable"}"><input type="radio" name="${kind}" value="${esc(f.flightNo)}" ${selected===f.flightNo?"checked":""} ${ok?"":"disabled"}><div><strong>${esc(f.time)} <span class="flight-arrow">→</span> ${esc(f.arrival)}</strong><div class="flight-small">${esc(f.from)} → ${esc(f.to)} · ${Math.floor(f.minutes/60)}h ${String(f.minutes%60).padStart(2,"0")}m</div></div><div><strong>${esc(f.flightNo)}</strong><div class="flight-small">${esc(fleetById[f.aircraft].name)}</div></div><div class="fare"><strong>${ok?money(cabinPrice(f,cabin)):"Not offered"}</strong><div class="flight-small">${ok?([0,6].includes(new Date(f.date+"T12:00:00Z").getUTCDay())?"Weekend fare · +20%":"Weekday fare")+(kind==="inbound"?" · 25% off with return booking":""):"in this cabin"}</div></div></label>`}
+function flightCard(f,selected,cabin,kind){const offered=supportsCabin(f,cabin),capacity=offered?cabinCapacity(f,cabin):0,pax=passengerCount(),ok=offered&&capacity>=pax;return `<label class="flight-card ${selected===f.flightNo?"chosen":""} ${ok?"":"unavailable"}"><input type="radio" name="${kind}" value="${esc(f.flightNo)}" ${selected===f.flightNo?"checked":""} ${ok?"":"disabled"}><div><strong>${esc(f.time)} <span class="flight-arrow">→</span> ${esc(f.arrival)}</strong><div class="flight-small">${esc(f.from)} → ${esc(f.to)} · ${Math.floor(f.minutes/60)}h ${String(f.minutes%60).padStart(2,"0")}m</div></div><div><strong>${esc(f.flightNo)}</strong><div class="flight-small">${esc(fleetById[f.aircraft].name)} · ${capacity} places in this cabin</div></div><div class="fare"><strong>${ok?money(cabinPrice(f,cabin)):offered?"Not enough places":"Not offered"}</strong><div class="flight-small">${ok?([0,6].includes(new Date(f.date+"T12:00:00Z").getUTCDay())?"Weekend fare · +20%":"Weekday fare")+(kind==="inbound"?" · 25% off with return booking":""):offered?`Needs ${pax}; cabin has ${capacity}`:"in this cabin"}</div></div></label>`}
 function refreshFlights(){
- const from=$("origin").value,to=$("destination").value,cabin=$("bookingCabin").value;
+ const from=$("origin").value,to=$("destination").value,cabin=$("bookingCabin").value,pax=passengerCount();
  const isReturn=$("tripType").value==="round";
  $("returnBlock").hidden=!isReturn;$("returnDateWrap").hidden=!isReturn;returnInput.required=isReturn;
  returnInput.min=dateInput.value||today;
  if(isReturn&&returnInput.value<returnInput.min)returnInput.value=returnInput.min;
  const outbound=routeServices(from,to,dateInput.value),inbound=isReturn?routeServices(to,from,returnInput.value):[];
- if(!outbound.some(f=>f.flightNo===selectedOut&&supportsCabin(f,cabin)))selectedOut=outbound.find(f=>supportsCabin(f,cabin))?.flightNo||null;
- if(!inbound.some(f=>f.flightNo===selectedReturn&&supportsCabin(f,cabin)))selectedReturn=inbound.find(f=>supportsCabin(f,cabin))?.flightNo||null;
- $("outboundFlights").innerHTML=outbound.length?outbound.map(f=>flightCard(f,selectedOut,cabin,"outbound")).join(""):'<p class="notice">No flights operate on this date. Try another departure date or route.</p>';
- $("returnFlights").innerHTML=inbound.length?inbound.map(f=>flightCard(f,selectedReturn,cabin,"inbound")).join(""):'<p class="notice">No return flights operate on this date. Try another return date.</p>';
+ if(!outbound.some(f=>f.flightNo===selectedOut&&flightFitsParty(f,cabin,pax)))selectedOut=outbound.find(f=>flightFitsParty(f,cabin,pax))?.flightNo||null;
+ if(!inbound.some(f=>f.flightNo===selectedReturn&&flightFitsParty(f,cabin,pax)))selectedReturn=inbound.find(f=>flightFitsParty(f,cabin,pax))?.flightNo||null;
+ $("outboundFlights").innerHTML=outbound.length?outbound.map(f=>flightCard(f,selectedOut,cabin,"outbound")).join("")+(selectedOut?"":`<p class="notice">No outbound service can accommodate ${pax} passengers in ${esc(cabin)}. Choose fewer passengers, another cabin or route.</p>`):'<p class="notice">No flights operate on this date. Try another departure date or route.</p>';
+ $("returnFlights").innerHTML=inbound.length?inbound.map(f=>flightCard(f,selectedReturn,cabin,"inbound")).join("")+(selectedReturn?"":`<p class="notice">No return service can accommodate ${pax} passengers in ${esc(cabin)}. Choose fewer passengers, another cabin or route.</p>`):'<p class="notice">No return flights operate on this date. Try another return date.</p>';
  document.querySelectorAll('input[name="outbound"]').forEach(el=>el.addEventListener("change",()=>{selectedOut=el.value;seatChoices.outbound=[];refreshFlights()}));
  document.querySelectorAll('input[name="inbound"]').forEach(el=>el.addEventListener("change",()=>{selectedReturn=el.value;seatChoices.inbound=[];refreshFlights()}));
  renderSeatChooser();
@@ -2200,10 +2205,11 @@ function refreshFlights(){
 let pendingPurchase=null;
 $("bookingForm").addEventListener("submit",event=>{
  event.preventDefault();const result=$("bookingResult");result.hidden=false;
- const from=$("origin").value,to=$("destination").value,cabin=$("bookingCabin").value,pax=Number($("passengers").value),round=$("tripType").value==="round";
+ const from=$("origin").value,to=$("destination").value,cabin=$("bookingCabin").value,pax=passengerCount(),round=$("tripType").value==="round";
  const outward=routeServices(from,to,dateInput.value).find(f=>f.flightNo===selectedOut),inward=round?routeServices(to,from,returnInput.value).find(f=>f.flightNo===selectedReturn):null;
+ if(!validPassengerCount(pax)){result.textContent="Please enter a whole number of passengers from 1 to 250.";return;}
  if(from===to){result.textContent="Please select different departure and arrival airports.";return;}
- if(!outward||!supportsCabin(outward,cabin)||round&&(!inward||!supportsCabin(inward,cabin))){result.textContent="Please select an available flight for every leg in your chosen cabin.";return;}
+ if(!outward||!flightFitsParty(outward,cabin,pax)||round&&(!inward||!flightFitsParty(inward,cabin,pax))){result.textContent=`No suitable flight is selected for ${pax} passengers in ${cabin}. Choose a larger aircraft/cabin, fewer passengers, or another route/date.`;return;}
  const cook=$("bookCook").value,meal=$("specialMeal").value;
  if(cloudEnabled()&&currentSeatLegs().some(({key,flight})=>flight&&(
     !liveSeatCache[key]||liveSeatCache[key].key!==liveSeatKey(flight,cabin)||
@@ -2211,6 +2217,16 @@ $("bookingForm").addEventListener("submit",event=>{
   result.textContent='Live seat availability is still loading. Please wait for the seat map before reviewing.';
   return;
  }
+  if(cloudEnabled()){
+   for(const {key,flight} of currentSeatLegs()){
+    if(!flight)continue;
+    const live=liveSeatCache[key];
+    if(live&&!live.loading&&!live.error&&Number.isFinite(live.availableCapacity)&&live.availableCapacity<pax){
+     result.textContent=`Only ${live.availableCapacity} passenger places remain in ${cabin} on ${flight.flightNo} (${key}). Select fewer passengers, a different flight, or another cabin.`;
+     return;
+    }
+   }
+  }
  if(cook!=="none"&&!(["Business","Private Suite"].includes(cabin))){result.textContent="Book the Cook is exclusively available in Business and Private Suites.";return;}
  if(cook!=="none"&&meal!=="Standard meal"){result.textContent="Please select either a special dietary meal or Book the Cook; dietary suitability cannot be assumed for chef-prepared dishes.";return;}
  for(const leg of [{key:"outbound",flight:outward},{key:"inbound",flight:inward}]){
@@ -2329,7 +2345,7 @@ function secureCode(length){
 }
 function makeBoardingLink(ticketId){
  const published=(location.protocol==='https:'||location.hostname==='localhost'||location.hostname==='127.0.0.1');
- const url=new URL(published?location.href:'https://paldea-air.onrender.com/Paldea_Air_Cancel_Refund_PLD.html');
+ const url=new URL(published?location.href:'https://paldea-air.onrender.com/Paldea_Air_Up_To_250_Passengers.html');
  url.search='';
  // A fragment is not sent to the web server in the HTTP request.
  url.hash='boarding='+encodeURIComponent(String(ticketId).trim().toUpperCase());
@@ -2347,6 +2363,11 @@ function qrSVG(qr){
  for(let y=0;y<n;y++)for(let x=0;x<n;x++)if(qr.isDark(y,x))cells+=`<rect x="${x+margin}" y="${y+margin}" width="1" height="1"/>`;
  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${total} ${total}" role="img" aria-label="Scan to issue PLD boarding pass"><g fill="#092f60">${cells}</g></svg>`;
 }
+function makeBookingDraft(data){
+ const legs=[{...data.outward,seats:data.seatsOut},...(data.inward?[{...data.inward,seats:data.seatsBack}]:[])];
+ return {legs,cabin:data.cabin,pax:data.pax,meal:data.meal,cook:data.cook,
+  total:data.total,seatTotal:data.seatTotal,fareTotal:data.fareTotal,cookTotal:data.cookTotal};
+}
 function makeIssuedBooking(data){
  const pnr=`PD${secureCode(6)}`;
  const existing=new Set(getBookings().flatMap(r=>r.tickets.map(t=>t.id)));
@@ -2355,10 +2376,7 @@ function makeIssuedBooking(data){
   do{id=`PLD-${String(new Date().getFullYear()).slice(-2)}-${secureCode(10)}`;}while(existing.has(id));
   existing.add(id);return {id,passenger:i+1,checkedIn:false};
  });
- const legs=[{...data.outward,seats:data.seatsOut},...(data.inward?[{...data.inward,seats:data.seatsBack}]:[])];
- return {pnr,tickets,legs,cabin:data.cabin,pax:data.pax,meal:data.meal,cook:data.cook,status:"confirmed",
-  total:data.total,seatTotal:data.seatTotal,fareTotal:data.fareTotal,cookTotal:data.cookTotal,
-  issuedAt:new Date().toISOString()};
+ return {...makeBookingDraft(data),pnr,tickets,status:"confirmed",issuedAt:new Date().toISOString()};
 }
 function ticketSeat(leg,passenger,cabin){
  if(!leg.seats.length)return "Assigned at check-in";
@@ -2666,8 +2684,8 @@ function renderCancelledBooking(record){
 }
 // ===== END CANCELLATION =====
 
-function downloadItinerary(record){
- const blob=itineraryPdfBlob(record),url=URL.createObjectURL(blob);
+function downloadItinerary(record,prebuiltBlob=null){
+ const blob=prebuiltBlob||itineraryPdfBlob(record),url=URL.createObjectURL(blob);
  const link=document.createElement('a');link.href=url;link.download=`Paldea_Air_Itinerary_${record.pnr}.pdf`;
  document.body.appendChild(link);link.click();link.remove();
  setTimeout(()=>URL.revokeObjectURL(url),10000);
@@ -2676,7 +2694,19 @@ function openTicketCheckin(id){
  $("paymentOverlay").hidden=true;location.hash='#checkin';$("ticketLookup").value=id;
  $("checkinForm").requestSubmit();
 }
-function paymentSuccess(record){
+function downloadTicketManifest(record){
+ const lines=[`PALDEA AIR — PLD TICKET MANIFEST`,`Booking: ${record.pnr}`,`Passengers: ${record.pax}`,`Cabin: ${record.cabin}`,`Journey: ${record.legs.length===2?'Return':'One-way'}`,`Demo tickets only; not valid for real travel.`,``];
+ for(const ticket of record.tickets){
+  lines.push(`Passenger ${ticket.passenger}: ${ticket.id}`);
+  for(const leg of record.legs)lines.push(`  ${leg.flightNo} ${leg.date}: ${ticketSeat(leg,ticket.passenger,record.cabin)}`);
+ }
+ const blob=new Blob([lines.join('\n')+'\n'],{type:'text/plain;charset=utf-8'});
+ const url=URL.createObjectURL(blob),link=document.createElement('a');
+ link.href=url;link.download=`Paldea_Air_Ticket_Manifest_${record.pnr}.txt`;
+ document.body.appendChild(link);link.click();link.remove();
+ setTimeout(()=>URL.revokeObjectURL(url),10000);
+}
+function paymentSuccess(record,prebuiltPdf=null){
  const modal=$("paymentModal");modal.classList.add('success');
  $("paymentOrbit").hidden=true;$("paymentSuccessIcon").hidden=false;
  $("paymentEyebrow").textContent='PALDEA AIR · BOOKING CONFIRMED';
@@ -2685,19 +2715,20 @@ function paymentSuccess(record){
  $("paymentProgress").hidden=true;
  const first=record.tickets[0];
  $("paymentDetails").innerHTML=`<div><strong>Booking reference: ${esc(record.pnr)}</strong></div>
- <div class="payment-ticket-list">${record.tickets.map(t=>`<code>${esc(t.id)}</code>`).join('')}</div>
+ <div class="payment-ticket-list">${record.tickets.slice(0,8).map(t=>`<code>${esc(t.id)}</code>`).join('')}${record.tickets.length>8?`<p class="notice">Showing the first 8 of ${record.tickets.length} tickets. Download the full PDF itinerary or ticket manifest for every passenger.</p>`:""}</div>
  <div class="payment-qr">${qrSVG(makeTicketQr(ticketQrPayload(record,first)))}</div>
  <p class="notice">${record.pax} individual ticket${record.pax===1?'':'s'} · Scan to issue a PLD boarding pass for passenger 1. The PDF contains a separate QR code for each passenger. Full demo cancellation and refund are available under Check in / manage booking.</p>
  <div class="payment-actions"><button type="button" class="primary" id="downloadAgain">Download itinerary PDF</button>
- <button type="button" id="goToCheckin">Check in / manage booking</button><button type="button" class="share-ticket" id="shareTicket">Copy ticket link</button><button type="button" id="closePayment">Close</button></div>`;
- $("downloadAgain").addEventListener('click',()=>downloadItinerary(record));
+ <button type="button" id="downloadManifest">Download all Ticket IDs (.txt)</button><button type="button" id="goToCheckin">Check in / manage booking</button><button type="button" class="share-ticket" id="shareTicket">Copy ticket link</button><button type="button" id="closePayment">Close</button></div>`;
+ $("downloadAgain").addEventListener('click',()=>downloadItinerary(record,prebuiltPdf));
+ $("downloadManifest").addEventListener('click',()=>downloadTicketManifest(record));
  $("goToCheckin").addEventListener('click',()=>openTicketCheckin(first.id));
  $("shareTicket").addEventListener('click',()=>copyShareLink(first.id));
  $("closePayment").addEventListener('click',()=>{$("paymentOverlay").hidden=true;});
  $("bookingResult").innerHTML=`<h3>Tickets issued · ${esc(record.pnr)}</h3><p>${record.pax} ticket ID${record.pax===1?'':'s'} created. Each itinerary QR code opens Paldea Air, completes demo check-in and issues that passenger's PLD boarding pass.</p> <p class="notice">Demo checkout only; no actual charge or airline ticket. To cancel all passengers and receive a full demo refund, open Check in / manage booking with your Ticket ID.</p><button type="button" class="primary" id="resultDownload">Download itinerary again</button> <button type="button" id="resultManage">Manage / cancel booking</button>`;
- $("resultDownload").addEventListener('click',()=>downloadItinerary(record));
+ $("resultDownload").addEventListener("click",()=>downloadItinerary(record,prebuiltPdf));
  $("resultManage").addEventListener('click',()=>openTicketCheckin(first.id));
- setTimeout(()=>downloadItinerary(record),700);
+ setTimeout(()=>downloadItinerary(record,prebuiltPdf),700);
 }
 
 async function startPurchase(){
@@ -2727,20 +2758,21 @@ async function startPurchase(){
    if(purchaseData.fingerprint!==bookingFingerprint())
     throw new Error('One of your selected seats was just booked. Please review the updated seat map and itinerary again.');
    // The server generates the authoritative PNR, seat assignment and Ticket IDs.
-   const draft=makeIssuedBooking(purchaseData);
+   const draft=makeBookingDraft(purchaseData);
    record=await cloudRpc('paldea_create_booking',{p_record:draft});
    if(!record||!record.pnr||!Array.isArray(record.tickets)||record.tickets.length!==purchaseData.pax)
     throw new Error('The cloud did not return valid ticket details.');
   }else{
    record=makeIssuedBooking(purchaseData);
   }
+  $("paymentDescription").textContent=`Generating ${record.pax}-page PLD itinerary with QR codes…`;
   const pdf=itineraryPdfBlob(record);
   if(pdf.size<1000)throw new Error('Itinerary generation failed');
   if(!cloudEnabled())saveBooking(record);
   lastIssuedBooking=record;pendingPurchase=null;
   const wait=Math.max(0,2200-(Date.now()-began));
   if(wait)await new Promise(resolve=>setTimeout(resolve,wait));
-  paymentSuccess(record);
+  paymentSuccess(record,pdf);
   if(cloudEnabled())void refreshSeatAvailability(true);
  }catch(err){
   if(cloudEnabled())void refreshSeatAvailability(true);
